@@ -15,4 +15,8 @@ Analyze and post results to discord:
 
     python3 bot.py
 
-You'll need a Marketstack API key to `.env`.
+You'll need a Marketstack API key to `.env` and some libraries installed (tbd).
+
+Example output:
+
+![Fortum graph for 2021-01-30](graphs/2021-01-30-FORTUM.XHEL.png)
