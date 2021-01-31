@@ -19,4 +19,4 @@ You'll need a Marketstack API key to `.env` and some libraries installed (tbd).
 
 Example output:
 
-![Fortum graph for 2021-01-30](graphs/2021-01-30-FORTUM.XHEL.png)
+![Example output (Fortum on 2021-01-31)](graphs/example.png)
