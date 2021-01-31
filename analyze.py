@@ -1,7 +1,8 @@
 from datetime import date
-from matplotlib.pyplot import subplots  # type: ignore
-from urllib.parse import quote as quote_url
+from matplotlib.pyplot import figure  # type: ignore
+from matplotlib.gridspec import GridSpec  # type: ignore
 from typing import Any, Tuple
+from urllib.parse import quote as quote_url
 
 from symbols import Symbol, SYMBOLS
 from get_data import read_file
@@ -99,16 +100,19 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
     return (df, highlight, summary)
 
 
-def draw(symbol, df):
+def draw(symbol: Symbol, df) -> str:
     """
     Draw graphs for given symbol and analyzing result
 
-    There will be a 6-month graph with
+    6-month graph with
     - close price line
     - high-low price area
     - hl2 exponential moving average for WINDOW_SIZE_LONG
 
-    and 14-day graph with
+    6-month graph with
+    - volume
+
+    14-day graph with
     - close price line
     - high-low price area
     - bollinger bands area
@@ -124,11 +128,36 @@ def draw(symbol, df):
     df_6mo = df.last("6M")
     df_14d = df.last("14D")
 
-    fig, axs = subplots(2, 1, figsize=(10, 10))
-
+    fig = figure(figsize=(10, 10))
     fig.suptitle("{0} ({1})".format(symbol.name, symbol.symbol_tradingview))
 
-    axs[0].plot_date(
+    # gs divides the graph to two graphs vertically
+    gs = GridSpec(2, 1, figure=fig)
+
+    # top_gs divides the top graph to four vertically
+    # here the hspace=0 hides top graph's x ticks, so this implies that they have to
+    # share the x axis
+    # however, sharex=True doesn't work here, so we'll have to manually be sure that
+    # the x is the same for both graphs (df_6mo.index)
+    top_gs = gs[0].subgridspec(4, 1, hspace=0)
+
+    # use 3/4 of the top graph for 6 month price
+    ax_6mo_price = fig.add_subplot(top_gs[:-1, :])
+    ax_6mo_price.set_ylabel("Price")
+
+    # use 1/3 of the top graph for 6 month volume
+    ax_6mo_volume = fig.add_subplot(top_gs[-1, :])
+    ax_6mo_volume.set_ylabel("Volume")
+
+    # bottom_gs is the whole bottom graph (this is not actually required, we could
+    # use the gs[1] directly, but add it for completeness and for future use)
+    bottom_gs = gs[1].subgridspec(1, 1, hspace=0)
+
+    # use all of bottom graph for 14 day price
+    ax_14d_price = fig.add_subplot(bottom_gs[:, :])
+    ax_14d_price.set_ylabel("Price")
+
+    ax_6mo_price.plot_date(
         x=df_6mo.index,
         y=df_6mo["close"],
         fmt="-",
@@ -136,7 +165,7 @@ def draw(symbol, df):
         color="black",
         label="close",
     )
-    axs[0].fill_between(
+    ax_6mo_price.fill_between(
         x=df_6mo.index,
         y1=df_6mo["high"],
         y2=df_6mo["low"],
@@ -145,7 +174,7 @@ def draw(symbol, df):
         color="black",
         label="high-low",
     )
-    axs[0].plot_date(
+    ax_6mo_price.plot_date(
         x=df_6mo.index,
         y=df_6mo["ema_long"],
         fmt="-",
@@ -154,7 +183,9 @@ def draw(symbol, df):
         label="EMA-{0}".format(WINDOW_SIZE_LONG),
     )
 
-    axs[1].plot_date(
+    ax_6mo_volume.bar(df_6mo.index, df_6mo["volume"], color="black")
+
+    ax_14d_price.plot_date(
         x=df_14d.index,
         y=df_14d["close"],
         fmt="-",
@@ -162,7 +193,7 @@ def draw(symbol, df):
         color="black",
         label="close",
     )
-    axs[1].fill_between(
+    ax_14d_price.fill_between(
         x=df_14d.index,
         y1=df_14d["high"],
         y2=df_14d["low"],
@@ -171,7 +202,7 @@ def draw(symbol, df):
         color="black",
         label="high-low",
     )
-    axs[1].fill_between(
+    ax_14d_price.fill_between(
         x=df_14d.index,
         y1=df_14d["bb_upper"],
         y2=df_14d["bb_lower"],
@@ -181,8 +212,8 @@ def draw(symbol, df):
         label="bollinger bands (EMA-{0})".format(WINDOW_SIZE_SHORT),
     )
 
-    axs[0].legend()
-    axs[1].legend()
+    ax_6mo_price.legend()
+    ax_14d_price.legend()
 
     fig.tight_layout()
     fig.savefig(filename)
