@@ -12,6 +12,12 @@ from get_data import read_file
 WINDOW_SIZE_SHORT = 10
 WINDOW_SIZE_LONG = 100
 
+STOCHASTIC_WINDOW_SIZE_K = 5
+STOCHASTIC_WINDOW_SIZE_K_SMOOTH = 3
+STOCHASTIC_WINDOW_SIZE_D = 3
+STOCHASTIC_UPPER_LIMIT = 0.8
+STOCHASTIC_LOWER_LIMIT = 0.2
+
 # Directory for saving analyze graphs
 GRAPH_DIR = "./graphs"
 
@@ -63,6 +69,17 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
     # bollinger bands
     df["bb_upper"] = df["sma_short"] + 2 * df["stdev_short"]
     df["bb_lower"] = df["sma_short"] - 2 * df["stdev_short"]
+
+    # stocahstic
+    df["stoch_k_highest"] = df.high.rolling(window=STOCHASTIC_WINDOW_SIZE_K).max()
+    df["stoch_k_lowest"] = df.low.rolling(window=STOCHASTIC_WINDOW_SIZE_K).min()
+    df["stoch_k_raw"] = (df["close"] - df["stoch_k_lowest"]) / (
+        df["stoch_k_highest"] - df["stoch_k_lowest"]
+    )
+    df["stoch_k"] = (
+        df["stoch_k_raw"].rolling(window=STOCHASTIC_WINDOW_SIZE_K_SMOOTH).mean()
+    )
+    df["stoch_d"] = df["stoch_k"].rolling(window=STOCHASTIC_WINDOW_SIZE_D).mean()
 
     close = df["close"].iat[-1]
     high = df["high"].iat[-1]
@@ -137,25 +154,28 @@ def draw(symbol: Symbol, df) -> str:
     # top_gs divides the top graph to four vertically
     # here the hspace=0 hides top graph's x ticks, so this implies that they have to
     # share the x axis
-    # however, sharex=True doesn't work here, so we'll have to manually be sure that
-    # the x is the same for both graphs (df_6mo.index)
     top_gs = gs[0].subgridspec(4, 1, hspace=0)
 
     # use 3/4 of the top graph for 6 month price
     ax_6mo_price = fig.add_subplot(top_gs[:-1, :])
     ax_6mo_price.set_ylabel("Price")
 
-    # use 1/3 of the top graph for 6 month volume
-    ax_6mo_volume = fig.add_subplot(top_gs[-1, :])
+    # use 1/4 of the top graph for 6 month volume
+    ax_6mo_volume = fig.add_subplot(top_gs[-1, :], sharex=ax_6mo_price)
     ax_6mo_volume.set_ylabel("Volume")
 
     # bottom_gs is the whole bottom graph (this is not actually required, we could
     # use the gs[1] directly, but add it for completeness and for future use)
-    bottom_gs = gs[1].subgridspec(1, 1, hspace=0)
+    bottom_gs = gs[1].subgridspec(3, 1, hspace=0)
 
-    # use all of bottom graph for 14 day price
-    ax_14d_price = fig.add_subplot(bottom_gs[:, :])
+    # use 2/3 of bottom graph for 14 day price and bollinger bands
+    ax_14d_price = fig.add_subplot(bottom_gs[:-1, :])
     ax_14d_price.set_ylabel("Price")
+
+    # 1/3 for stochastic
+    ax_stochastic = fig.add_subplot(
+        bottom_gs[-1, :], sharex=ax_14d_price, yscale="logit", ylim=(10e-3, 1 - 10e-3)
+    )
 
     ax_6mo_price.plot_date(
         x=df_6mo.index,
@@ -212,8 +232,36 @@ def draw(symbol: Symbol, df) -> str:
         label="bollinger bands (EMA-{0})".format(WINDOW_SIZE_SHORT),
     )
 
-    ax_6mo_price.legend()
-    ax_14d_price.legend()
+    ax_stochastic.plot_date(
+        x=df_14d.index,
+        y=df_14d["stoch_k"],
+        fmt="-",
+        linewidth=1,
+        color="blue",
+        label="stochastic %K",
+    )
+
+    ax_stochastic.plot_date(
+        x=df_14d.index,
+        y=df_14d["stoch_d"],
+        fmt="-",
+        linewidth=1,
+        color="red",
+        label="stochastic %D",
+    )
+
+    ax_stochastic.fill_between(
+        x=df_14d.index,
+        y1=STOCHASTIC_UPPER_LIMIT,
+        y2=STOCHASTIC_LOWER_LIMIT,
+        alpha=0.2,
+        linewidth=1,
+        color="magenta",
+    )
+
+    ax_6mo_price.legend(loc=2)
+    ax_14d_price.legend(loc=2)
+    ax_stochastic.legend(loc=2)
 
     fig.tight_layout()
     fig.savefig(filename)
