@@ -81,33 +81,35 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
     )
     df["stoch_d"] = df["stoch_k"].rolling(window=STOCHASTIC_WINDOW_SIZE_D).mean()
 
+    opn = df["open"].iat[-1]
     close = df["close"].iat[-1]
     high = df["high"].iat[-1]
     low = df["low"].iat[-1]
     trend = df["ema_long_delta"].iat[-1]
     bb_upper = df["bb_upper"].iat[-1]
     bb_lower = df["bb_lower"].iat[-1]
+    stoch_k = df["stoch_k"].iat[-1]
+    stoch_d = df["stoch_d"].iat[-1]
 
-    summary = "Bollinger bands for {0}\n".format(symbol.name)
+    summary = "{0}\n".format(symbol.name)
     summary += "```\n"
+    summary += "open     {0:>4.2f}\n".format(opn)
     summary += "close    {0:>4.2f}\n".format(close)
     summary += "high     {0:>4.2f}\n".format(high)
     summary += "low      {0:>4.2f}\n".format(low)
-    summary += "bb upper {0:>4.2f}\n".format(bb_upper)
-    summary += "bb lower {0:>4.2f}\n".format(bb_lower)
     summary += "```\n"
     summary += "<{0}?symbol={1}>".format(TRADINGVIEW_URL, symbol.symbol_tradingview)
 
     highlight = False
 
-    if close > bb_upper and trend < 0:
+    if (close > bb_upper and trend < 0) or (stoch_k > 0.8 and stoch_d > 0.8):
         nordnet_url = "{0}?direction={1}&underlyingName={2}".format(
             NORDNET_LISTING_URL, "D", quote_url(symbol.name)
         )
         summary += "\n<{0}>".format(nordnet_url)
         highlight = True
 
-    if close < bb_lower and trend > 0:
+    if (close < bb_lower and trend > 0) or (stoch_k < 0.2 and stoch_d < 0.2):
         nordnet_url = "{0}?direction={1}&underlyingName={2}".format(
             NORDNET_LISTING_URL, "U", quote_url(symbol.name)
         )
