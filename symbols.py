@@ -44,5 +44,6 @@ SYMBOLS: List[Symbol] = [
     Symbol("UPM.XHEL", "OMXHEX:UPM", "UPM-Kymmene Corporation"),
     Symbol("VWS.XCSE", "OMXCOP:VWS", "Vestas Wind Systems A/S"),
     Symbol("WRT1V.XHEL", "OMXHEX:WRT1V", "Wärtsilä Corporation"),
-    Symbol("YARO.XSTO", "OMXSTO:YARO", "Yara International"),
+    Symbol("SLV", "SLV", "Silver"),
+    Symbol("IAU", "IAU", "Gold"),
 ]
