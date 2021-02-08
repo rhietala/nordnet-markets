@@ -1,6 +1,8 @@
 from datetime import date
 from matplotlib.pyplot import figure  # type: ignore
 from matplotlib.gridspec import GridSpec  # type: ignore
+from matplotlib.transforms import Bbox  # type: ignore
+from numpy import vstack  # type: ignore
 from typing import Any, Tuple
 from urllib.parse import quote as quote_url
 
@@ -17,6 +19,8 @@ STOCHASTIC_WINDOW_SIZE_K_SMOOTH = 3
 STOCHASTIC_WINDOW_SIZE_D = 3
 STOCHASTIC_UPPER_LIMIT = 0.8
 STOCHASTIC_LOWER_LIMIT = 0.2
+
+ALL_TIME_HIGH_RANGE = 0.97
 
 # Directory for saving analyze graphs
 GRAPH_DIR = "./graphs"
@@ -45,9 +49,16 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
     - bb_upper: upper bollinger band (2 * stdev_short over sma_short)
     - bb_lower: lower bollinger band (2 * stdev_short under sma_short)
 
+    All-time high:
+    - ath: highest value ever
+    - ath_95: 95% of the highest value
+
     Highlighting is done if
     - last close is above bb_upper AND ema_long_delta (trend) is positive, or
     - last close is under bb_lower AND ema_long_delta (trend) is negative
+    - stochastic K and D are both over 0.8
+    - stochastic K and D are both under 0.2
+    - last high is over 95% of all-time high
 
     :param symbol: market symbol for analyzing
     :return (df, highlight, summary): a tuple with
@@ -81,6 +92,10 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
     )
     df["stoch_d"] = df["stoch_k"].rolling(window=STOCHASTIC_WINDOW_SIZE_D).mean()
 
+    # all-time high
+    df["ath"] = df["high"].cummax()
+    df["ath_lower"] = df["ath"] * ALL_TIME_HIGH_RANGE
+
     opn = df["open"].iat[-1]
     close = df["close"].iat[-1]
     high = df["high"].iat[-1]
@@ -90,6 +105,7 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
     bb_lower = df["bb_lower"].iat[-1]
     stoch_k = df["stoch_k"].iat[-1]
     stoch_d = df["stoch_d"].iat[-1]
+    ath_lower = df["ath_lower"].iat[-1]
 
     summary = "{0}\n".format(symbol.name)
     summary += "```\n"
@@ -102,14 +118,18 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
 
     highlight = False
 
-    if (close > bb_upper and trend < 0) or (stoch_k > 0.8 and stoch_d > 0.8):
+    if (close > bb_upper and trend < 0) or (
+        stoch_k > 0.8 and stoch_d > 0.8 and trend > 0
+    ):
         nordnet_url = "{0}?direction={1}&underlyingName={2}".format(
             NORDNET_LISTING_URL, "D", quote_url(symbol.name)
         )
         summary += "\n<{0}>".format(nordnet_url)
         highlight = True
 
-    if (close < bb_lower and trend > 0) or (stoch_k < 0.2 and stoch_d < 0.2):
+    if (close < bb_lower and trend > 0) or (
+        stoch_k < 0.2 and stoch_d < 0.2 and trend > 0 or (high > ath_lower)
+    ):
         nordnet_url = "{0}?direction={1}&underlyingName={2}".format(
             NORDNET_LISTING_URL, "U", quote_url(symbol.name)
         )
@@ -159,7 +179,7 @@ def draw(symbol: Symbol, df) -> str:
     top_gs = gs[0].subgridspec(4, 1, hspace=0)
 
     # use 3/4 of the top graph for 6 month price
-    ax_6mo_price = fig.add_subplot(top_gs[:-1, :])
+    ax_6mo_price = fig.add_subplot(top_gs[:-1, :], autoscaley_on=False)
     ax_6mo_price.set_ylabel("Price")
 
     # use 1/4 of the top graph for 6 month volume
@@ -171,7 +191,7 @@ def draw(symbol: Symbol, df) -> str:
     bottom_gs = gs[1].subgridspec(3, 1, hspace=0)
 
     # use 2/3 of bottom graph for 14 day price and bollinger bands
-    ax_14d_price = fig.add_subplot(bottom_gs[:-1, :])
+    ax_14d_price = fig.add_subplot(bottom_gs[:-1, :], autoscaley_on=False)
     ax_14d_price.set_ylabel("Price")
 
     # 1/3 for stochastic
@@ -205,6 +225,25 @@ def draw(symbol: Symbol, df) -> str:
         label="EMA-{0}".format(WINDOW_SIZE_LONG),
     )
 
+    ax_6mo_price.plot_date(
+        x=df_6mo.index,
+        y=df_6mo["ath"],
+        fmt="-",
+        linewidth=1,
+        color="red",
+        label="all-time high",
+    )
+
+    ax_6mo_price.plot_date(
+        x=df_6mo.index, y=df_6mo["ath_lower"], fmt="--", linewidth=1, color="red"
+    )
+
+    # all-time high can be outside the viewed area
+    ax_6mo_price.set_ylim(
+        top=max([df_6mo["high"].max(), df_6mo["ema_long"].max()]) * 1.01,
+        bottom=min([df_6mo["low"].min(), df_6mo["ema_long"].min()]) * 0.99,
+    )
+
     ax_6mo_volume.bar(df_6mo.index, df_6mo["volume"], color="black")
 
     ax_14d_price.plot_date(
@@ -232,6 +271,24 @@ def draw(symbol: Symbol, df) -> str:
         linewidth=1,
         color="green",
         label="bollinger bands (EMA-{0})".format(WINDOW_SIZE_SHORT),
+    )
+    ax_14d_price.plot_date(
+        x=df_14d.index,
+        y=df_14d["ath"],
+        fmt="-",
+        linewidth=1,
+        color="red",
+        label="all-time high",
+    )
+
+    ax_14d_price.plot_date(
+        x=df_14d.index, y=df_14d["ath_lower"], fmt="--", linewidth=1, color="red"
+    )
+
+    # all-time high can be outside the viewed area
+    ax_14d_price.set_ylim(
+        top=max([df_14d["high"].max(), df_14d["bb_upper"].max()]) * 1.01,
+        bottom=min([df_14d["low"].min(), df_14d["bb_lower"].min()]) * 0.99,
     )
 
     ax_stochastic.plot_date(
