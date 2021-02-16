@@ -29,7 +29,8 @@ GRAPH_DIR = "./graphs"
 TRADINGVIEW_URL = "https://www.tradingview.com/chart/"
 
 # Nordnet URL for bull and bear certificates listing
-NORDNET_LISTING_URL = "https://www.nordnet.fi/markkinakatsaus/sertifikaatit"
+NORDNET_CERTIFICATES_URL = "https://www.nordnet.fi/markkinakatsaus/sertifikaatit"
+NORDNET_MINIFUTURES_URL = "https://www.nordnet.fi/markkinakatsaus/minifutuurit"
 
 
 def analyze(symbol) -> Tuple[Any, bool, str]:
@@ -98,6 +99,7 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
 
     opn = df["open"].iat[-1]
     close = df["close"].iat[-1]
+    close_prev = df["close"].iat[-2]
     high = df["high"].iat[-1]
     low = df["low"].iat[-1]
     trend = df["ema_long_delta"].iat[-1]
@@ -105,6 +107,7 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
     bb_lower = df["bb_lower"].iat[-1]
     stoch_k = df["stoch_k"].iat[-1]
     stoch_d = df["stoch_d"].iat[-1]
+    ath_lower_prev = df["ath_lower"].iat[-2]
     ath_lower = df["ath_lower"].iat[-1]
 
     summary = "{0}\n".format(symbol.name)
@@ -114,27 +117,39 @@ def analyze(symbol) -> Tuple[Any, bool, str]:
     summary += "high     {0:>4.2f}\n".format(high)
     summary += "low      {0:>4.2f}\n".format(low)
     summary += "```\n"
-    summary += "<{0}?symbol={1}>".format(TRADINGVIEW_URL, symbol.symbol_tradingview)
 
     highlight = False
+    nordnet_dir = None
 
-    if (close > bb_upper and trend < 0) or (
-        stoch_k > 0.8 and stoch_d > 0.8 and trend > 0
-    ):
-        nordnet_url = "{0}?direction={1}&underlyingName={2}".format(
-            NORDNET_LISTING_URL, "D", quote_url(symbol.name)
-        )
-        summary += "\n<{0}>".format(nordnet_url)
+    if close > bb_upper and trend < 0:
+        nordnet_dir = "D"
         highlight = True
+        summary += "- lopetus bollinger bandin yläpuolella ja trendi laskeva => ylireagointi => short\n"
 
-    if (close < bb_lower and trend > 0) or (
-        stoch_k < 0.2 and stoch_d < 0.2 and trend > 0 or (high > ath_lower)
-    ):
-        nordnet_url = "{0}?direction={1}&underlyingName={2}".format(
-            NORDNET_LISTING_URL, "U", quote_url(symbol.name)
-        )
-        summary += "\n<{0}>".format(nordnet_url)
+    if close < bb_lower and trend > 0:
+        nordnet_dir = "U"
         highlight = True
+        summary += "- lopetus bollinger bandin alapuolella ja trendi nouseva => ylireagointi => long\n"
+
+    if (
+        close > ath_lower
+        and close_prev > ath_lower_prev
+        and ath_lower == ath_lower_prev
+    ):
+        nordnet_dir = "U"
+        highlight = True
+        summary += "- kaksi edellistä lopetusta ATH-kaistalla, ja kaista ei ole noussut => ehkä kohta menee => long\n"
+
+    summary += "\n<{0}?symbol={1}>".format(TRADINGVIEW_URL, symbol.symbol_tradingview)
+    nordnet_certificates_url = "{0}?direction={1}&underlyingName={2}".format(
+        NORDNET_CERTIFICATES_URL, nordnet_dir, quote_url(symbol.name)
+    )
+    nordnet_minifutures_url = "{0}?direction={1}&underlyingName={2}".format(
+        NORDNET_MINIFUTURES_URL, nordnet_dir, quote_url(symbol.name)
+    )
+    summary += "\n<{0}>\n<{1}>\n".format(
+        nordnet_certificates_url, nordnet_minifutures_url
+    )
 
     return (df, highlight, summary)
 
